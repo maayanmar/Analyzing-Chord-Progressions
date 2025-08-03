@@ -66,7 +66,7 @@ class DataMetadata:
 class MetadataLoader:
     """Loads metadata from data file"""
 
-    def __init__(self, data_path: str = "../data/processed.csv"):
+    def __init__(self, data_path: str = "data/processed.csv"):
         self.data_path = data_path
         self.metadata = None
 
@@ -101,7 +101,7 @@ class MetadataLoader:
 class AnalyzerManager:
     """Manages analyzer discovery and execution"""
 
-    def __init__(self, analyzer_path: str = "../analyzers"):
+    def __init__(self, analyzer_path: str = "analyzers"):
         self.analyzer_path = Path(analyzer_path)
         self.analyzers = {}
         self._discover_analyzers()
@@ -151,7 +151,7 @@ class AnalyzerManager:
         analyzer = analyzer_class()
 
         # Load data and run analysis
-        data = pd.read_csv("../data/processed.csv")
+        data = pd.read_csv("data/processed.csv")
         results = analyzer.analyze(data, genres, start_year, end_year)
 
         # Get visualization and report
