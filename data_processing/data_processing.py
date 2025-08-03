@@ -1,6 +1,8 @@
 # this file is responsible the basic data processing task
 # from raw data to processed data which contains only the necessary information
-# song id, genre, year, chords
+# song id, genre, release date, chords
+
+# TODO: currently the code drops NA values, but it might be better to handle them differently
 
 import pandas as pd
 
