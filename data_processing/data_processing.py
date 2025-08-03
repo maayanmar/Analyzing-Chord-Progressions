@@ -7,7 +7,7 @@
 import pandas as pd
 
 
-def process_data(file_path: str = '../data/raw.csv') -> pd.DataFrame:
+def process_data(file_path: str = 'data/raw.csv') -> pd.DataFrame:
     """
     Process the raw data file to extract necessary information.
 
