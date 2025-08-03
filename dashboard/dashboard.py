@@ -2,14 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-import json
-import os
-import glob
+import sys
 import importlib.util
 from datetime import datetime
-from typing import Dict, List, Any
-import sys
+from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
+from dataclasses import dataclass
 
 # Page config
 st.set_page_config(
@@ -19,12 +17,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for musical theme
+# Custom CSS
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #fafafa;
-    }
     .main-header {
         background: linear-gradient(90deg, #FF6B6B 0%, #4ECDC4 50%, #45B7D1 100%);
         -webkit-background-clip: text;
@@ -49,13 +44,6 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
-    .metric-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin: 0.5rem 0;
-    }
     .analyzer-card {
         background: white;
         padding: 1rem;
@@ -66,279 +54,345 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'data_loaded' not in st.session_state:
-    st.session_state.data_loaded = False
-if 'analyses' not in st.session_state:
-    st.session_state.analyses = {}
-if 'selected_analyzers' not in st.session_state:
-    st.session_state.selected_analyzers = []
 
-# Helper functions
-def discover_analyzers():
-    """Dynamically discover available analyzers"""
-    analyzers = {}
-    analyzer_path = Path("../analyzers")
+@dataclass
+class DataMetadata:
+    """Container for data metadata"""
+    genres: List[str]
+    min_year: int
+    max_year: int
 
-    # Add analyzers directory to Python path
-    if analyzer_path.exists():
-        sys.path.insert(0, str(analyzer_path.parent))
 
-        for file_path in analyzer_path.glob("*.py"):
-            if file_path.name != "__init__.py" and file_path.name != "base_analyzer.py":
-                analyzer_name = file_path.stem
-                try:
-                    spec = importlib.util.spec_from_file_location(analyzer_name, file_path)
-                    module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
+class MetadataLoader:
+    """Loads metadata from data file"""
 
-                    # Find analyzer class
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        if (isinstance(attr, type) and
-                                hasattr(attr, 'analyze') and
-                                attr_name != 'BaseAnalyzer'):
-                            analyzers[analyzer_name] = {
-                                'class': attr,
-                                'name': analyzer_name.replace('_', ' ').title(),
-                                'description': getattr(attr, '__doc__', 'No description available')
-                            }
-                            break
-                except Exception as e:
-                    st.error(f"Error loading {analyzer_name}: {str(e)}")
+    def __init__(self, data_path: str = "../data/processed.csv"):
+        self.data_path = data_path
+        self.metadata = None
 
-    return analyzers
+    def load_metadata(self) -> Optional[DataMetadata]:
+        """Load metadata from CSV"""
+        try:
+            df = pd.read_csv(self.data_path)
 
-def load_data(file_path):
-    """Load chord data from CSV"""
-    try:
-        # Simulate loading with sample data structure
-        data = pd.DataFrame({
-            'artist': ['Artist1', 'Artist2', 'Artist3'] * 100,
-            'song': ['Song1', 'Song2', 'Song3'] * 100,
-            'release_date': pd.date_range('2000-01-01', periods=300, freq='M'),
-            'genre': ['pop', 'rock', 'jazz'] * 100,
-            'chords': ['C G Am F', 'G D Em C', 'Cmaj7 Dm7 G7 Cmaj7'] * 100
-        })
-        data['year'] = data['release_date'].dt.year
-        return data
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        return None
+            # Extract unique genres
+            genres = []
+            if 'genre' in df.columns:
+                genres = sorted(df['genre'].dropna().unique().tolist())
 
-def save_analysis(analysis_id, results, metadata):
-    """Save analysis results"""
-    if 'saved_analyses' not in st.session_state:
-        st.session_state.saved_analyses = {}
+            # Extract year range
+            min_year, max_year = 1950, 2024  # defaults
+            if 'release_date' in df.columns:
+                df['year'] = pd.to_datetime(df['release_date']).dt.year
+                min_year = int(df['year'].min())
+                max_year = int(df['year'].max())
+            elif 'year' in df.columns:
+                min_year = int(df['year'].min())
+                max_year = int(df['year'].max())
 
-    st.session_state.saved_analyses[analysis_id] = {
-        'results': results,
-        'metadata': metadata,
-        'timestamp': datetime.now().isoformat()
-    }
+            self.metadata = DataMetadata(genres, min_year, max_year)
+            return self.metadata
 
-# Main app
-st.markdown('<h1 class="main-header">🎵 Chord Analysis Dashboard 🎵</h1>', unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error loading metadata: {str(e)}")
+            return None
 
-# Sidebar
-with st.sidebar:
-    st.header("⚙️ Analysis Parameters")
 
-    # Year selection
-    st.subheader("📅 Time Range")
-    col1, col2 = st.columns(2)
-    with col1:
-        start_year = st.number_input("Start Year", min_value=1950, max_value=2024, value=2000)
-    with col2:
-        end_year = st.number_input("End Year", min_value=1950, max_value=2024, value=2024)
+class AnalyzerManager:
+    """Manages analyzer discovery and execution"""
 
-    # Genre selection
-    st.subheader("🎸 Genres")
-    available_genres = ['pop', 'rock', 'jazz', 'blues', 'country', 'electronic', 'hip-hop', 'classical']
-    selected_genres = st.multiselect("Select Genres", available_genres, default=['pop', 'rock'])
+    def __init__(self, analyzer_path: str = "../analyzers"):
+        self.analyzer_path = Path(analyzer_path)
+        self.analyzers = {}
+        self._discover_analyzers()
 
-    # Load data button
-    if st.button("🔄 Load Data", type="primary", use_container_width=True):
-        with st.spinner("Loading data..."):
-            data = load_data("chordonomicon.csv")
-            if data is not None:
-                st.session_state.data = data
-                st.session_state.data_loaded = True
-                st.success("✅ Data loaded successfully!")
+    def _discover_analyzers(self):
+        """Dynamically discover available analyzers"""
+        if not self.analyzer_path.exists():
+            st.warning(f"Analyzers directory not found: {self.analyzer_path}")
+            return
 
-    # Analyzer selection
-    if st.session_state.data_loaded:
-        st.divider()
-        st.subheader("🔍 Select Analyzers")
+        # Add analyzers directory to Python path
+        sys.path.insert(0, str(self.analyzer_path.parent))
 
-        analyzers = discover_analyzers()
+        for file_path in self.analyzer_path.glob("*.py"):
+            if file_path.name in ["__init__.py", "base_analyzer.py"]:
+                continue
 
-        if not analyzers:
-            st.info("No analyzers found. Using demo analyzers.")
-            # Demo analyzers for testing
-            demo_analyzers = {
-                'chord_progression': {
-                    'name': 'Chord Progression Analysis',
-                    'description': 'Analyzes common chord progressions'
-                },
-                'complexity_analysis': {
-                    'name': 'Complexity Analysis',
-                    'description': 'Measures chord complexity over time'
-                },
-                'genre_patterns': {
-                    'name': 'Genre Pattern Detection',
-                    'description': 'Identifies genre-specific chord patterns'
-                }
-            }
+            analyzer_name = file_path.stem
+            try:
+                spec = importlib.util.spec_from_file_location(analyzer_name, file_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
-            for analyzer_id, analyzer_info in demo_analyzers.items():
-                with st.container():
-                    st.markdown(f'<div class="analyzer-card">', unsafe_allow_html=True)
-                    if st.checkbox(analyzer_info['name'], key=f"check_{analyzer_id}"):
-                        if analyzer_id not in st.session_state.selected_analyzers:
-                            st.session_state.selected_analyzers.append(analyzer_id)
-                    else:
-                        if analyzer_id in st.session_state.selected_analyzers:
-                            st.session_state.selected_analyzers.remove(analyzer_id)
-                    st.caption(analyzer_info['description'])
-                    st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            for analyzer_id, analyzer_info in analyzers.items():
-                with st.container():
-                    st.markdown(f'<div class="analyzer-card">', unsafe_allow_html=True)
-                    if st.checkbox(analyzer_info['name'], key=f"check_{analyzer_id}"):
-                        if analyzer_id not in st.session_state.selected_analyzers:
-                            st.session_state.selected_analyzers.append(analyzer_id)
-                    else:
-                        if analyzer_id in st.session_state.selected_analyzers:
-                            st.session_state.selected_analyzers.remove(analyzer_id)
-                    st.caption(analyzer_info['description'])
-                    st.markdown('</div>', unsafe_allow_html=True)
+                # Find analyzer class
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if (isinstance(attr, type) and
+                            hasattr(attr, 'analyze') and
+                            hasattr(attr, 'create_visualization') and
+                            hasattr(attr, 'get_report') and
+                            attr_name != 'BaseAnalyzer'):
+                        self.analyzers[analyzer_name] = {
+                            'class': attr,
+                            'name': analyzer_name.replace('_', ' ').title(),
+                            'description': getattr(attr, '__doc__', 'No description available')
+                        }
+                        break
+            except Exception as e:
+                st.error(f"Error loading {analyzer_name}: {str(e)}")
 
-# Main content area
-if not st.session_state.data_loaded:
-    st.info("👈 Please load data from the sidebar to begin analysis")
-else:
-    # Analysis button
-    if st.session_state.selected_analyzers:
-        if st.button("🚀 Run Analysis", type="primary"):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+    def run_analyzer(self, analyzer_id: str, genres: List[str], start_year: int, end_year: int) -> Tuple[go.Figure, Dict]:
+        """Run a single analyzer"""
+        if analyzer_id not in self.analyzers:
+            raise ValueError(f"Analyzer {analyzer_id} not found")
 
-            results = {}
-            for i, analyzer_id in enumerate(st.session_state.selected_analyzers):
-                status_text.text(f"Running {analyzer_id}...")
-                progress_bar.progress((i + 1) / len(st.session_state.selected_analyzers))
+        analyzer_class = self.analyzers[analyzer_id]['class']
+        analyzer = analyzer_class()
 
-                # Simulate analysis results
-                if analyzer_id == 'chord_progression':
-                    results[analyzer_id] = {
-                        'name': 'Chord Progression Analysis',
-                        'data': pd.DataFrame({
-                            'progression': ['I-V-vi-IV', 'I-IV-V', 'ii-V-I', 'I-vi-IV-V'],
-                            'count': [245, 189, 156, 134],
-                            'percentage': [33.5, 25.9, 21.4, 18.3]
-                        }),
-                        'chart_type': 'bar'
-                    }
-                elif analyzer_id == 'complexity_analysis':
-                    results[analyzer_id] = {
-                        'name': 'Complexity Over Time',
-                        'data': pd.DataFrame({
-                            'year': range(2000, 2025),
-                            'complexity_score': [3.2 + i*0.05 + (i%3)*0.1 for i in range(25)]
-                        }),
-                        'chart_type': 'line'
-                    }
-                elif analyzer_id == 'genre_patterns':
-                    results[analyzer_id] = {
-                        'name': 'Genre Chord Patterns',
-                        'data': pd.DataFrame({
-                            'genre': ['Pop', 'Rock', 'Jazz', 'Blues'],
-                            'avg_chords_per_song': [4.2, 5.1, 7.8, 5.5],
-                            'unique_chords': [12, 18, 32, 16]
-                        }),
-                        'chart_type': 'grouped_bar'
-                    }
+        # Load data and run analysis
+        data = pd.read_csv("../data/processed.csv")
+        results = analyzer.analyze(data, genres, start_year, end_year)
 
-            progress_bar.progress(1.0)
-            status_text.text("Analysis complete!")
+        # Get visualization and report
+        fig = analyzer.create_visualization()
+        report = analyzer.get_report()
 
-            # Save results
-            analysis_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_analysis(analysis_id, results, {
-                'start_year': start_year,
-                'end_year': end_year,
-                'genres': selected_genres,
-                'analyzers': st.session_state.selected_analyzers
-            })
+        return fig, report
 
-            st.session_state.analyses[analysis_id] = results
-            st.success(f"✅ Analysis complete! ID: {analysis_id}")
 
-    # Display results
-    if st.session_state.analyses:
+class TabManager:
+    """Manages analysis tabs"""
+
+    def __init__(self):
+        if 'analysis_tabs' not in st.session_state:
+            st.session_state.analysis_tabs = {}
+        if 'tab_counter' not in st.session_state:
+            st.session_state.tab_counter = 0
+
+    def create_tab_id(self) -> str:
+        """Create unique tab ID"""
+        st.session_state.tab_counter += 1
+        timestamp = datetime.now().strftime("%H%M%S")
+        return f"{timestamp}_{st.session_state.tab_counter}"
+
+    def add_tab(self, tab_id: str, results: Dict[str, Tuple[go.Figure, Dict]], metadata: Dict):
+        """Add new analysis tab"""
+        st.session_state.analysis_tabs[tab_id] = {
+            'results': results,
+            'metadata': metadata,
+            'timestamp': datetime.now()
+        }
+
+    def render_tabs(self):
+        """Render all analysis tabs"""
+        if not st.session_state.analysis_tabs:
+            return
+
         st.divider()
         st.header("📊 Analysis Results")
 
-        # Tabs for different analyses
-        tab_names = [f"Analysis {aid}" for aid in st.session_state.analyses.keys()]
+        # Create tabs
+        tab_ids = list(st.session_state.analysis_tabs.keys())
+        tab_names = [f"Analysis {tid}" for tid in tab_ids]
         tabs = st.tabs(tab_names)
 
-        for tab, (analysis_id, results) in zip(tabs, st.session_state.analyses.items()):
+        # Render each tab
+        for tab, tab_id in zip(tabs, tab_ids):
             with tab:
-                for analyzer_id, result in results.items():
-                    st.subheader(result['name'])
+                tab_data = st.session_state.analysis_tabs[tab_id]
+                self._render_tab_content(tab_data)
 
-                    col1, col2 = st.columns([2, 1])
-
-                    with col1:
-                        # Create visualization based on chart type
-                        if result['chart_type'] == 'bar':
-                            fig = px.bar(result['data'], x='progression', y='count',
-                                         title=result['name'],
-                                         color='count',
-                                         color_continuous_scale='Viridis')
-                        elif result['chart_type'] == 'line':
-                            fig = px.line(result['data'], x='year', y='complexity_score',
-                                          title=result['name'],
-                                          markers=True)
-                        elif result['chart_type'] == 'grouped_bar':
-                            fig = go.Figure()
-                            fig.add_trace(go.Bar(name='Avg Chords', x=result['data']['genre'],
-                                                 y=result['data']['avg_chords_per_song']))
-                            fig.add_trace(go.Bar(name='Unique Chords', x=result['data']['genre'],
-                                                 y=result['data']['unique_chords']))
-                            fig.update_layout(barmode='group', title=result['name'])
-
-                        st.plotly_chart(fig, use_container_width=True)
-
-                    with col2:
-                        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                        st.metric("Total Records", len(result['data']))
-                        if 'percentage' in result['data'].columns:
-                            st.metric("Top Result", f"{result['data']['percentage'].iloc[0]:.1f}%")
-                        st.markdown('</div>', unsafe_allow_html=True)
-
-                    # Show data table
-                    with st.expander("View Raw Data"):
-                        st.dataframe(result['data'], use_container_width=True)
-
-                # Export button
-                if st.button(f"💾 Export Analysis {analysis_id}", key=f"export_{analysis_id}"):
-                    st.info("Export functionality coming soon!")
-
-    # Comparison mode
-    if len(st.session_state.analyses) > 1:
-        st.divider()
-        st.header("🔄 Compare Analyses")
-
-        col1, col2 = st.columns(2)
+    def _render_tab_content(self, tab_data: Dict):
+        """Render content of a single tab"""
+        # Show metadata
+        metadata = tab_data['metadata']
+        col1, col2, col3 = st.columns(3)
         with col1:
-            analysis1 = st.selectbox("Select First Analysis", list(st.session_state.analyses.keys()))
+            st.metric("Year Range", f"{metadata['start_year']} - {metadata['end_year']}")
         with col2:
-            analysis2 = st.selectbox("Select Second Analysis",
-                                     [a for a in st.session_state.analyses.keys() if a != analysis1])
+            st.metric("Genres", len(metadata['genres']))
+        with col3:
+            st.metric("Time", tab_data['timestamp'].strftime("%H:%M:%S"))
 
-        if st.button("Compare"):
-            st.info("Comparison view coming soon!")
+        # Show results for each analyzer
+        for analyzer_name, (fig, report) in tab_data['results'].items():
+            st.subheader(analyzer_name.replace('_', ' ').title())
+
+            # Display visualization
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Display report
+            if report:
+                with st.expander("View Report"):
+                    for key, value in report.items():
+                        st.write(f"**{key}:** {value}")
+
+
+class DashboardUI:
+    """Main dashboard UI class"""
+
+    def __init__(self):
+        self.metadata_loader = MetadataLoader()
+        self.analyzer_manager = AnalyzerManager()
+        self.tab_manager = TabManager()
+        self._init_session_state()
+        self._load_metadata()
+
+    def _init_session_state(self):
+        """Initialize session state variables"""
+        if 'selected_analyzers' not in st.session_state:
+            st.session_state.selected_analyzers = []
+        if 'metadata' not in st.session_state:
+            st.session_state.metadata = None
+
+    def _load_metadata(self):
+        """Load metadata on startup"""
+        if st.session_state.metadata is None:
+            st.session_state.metadata = self.metadata_loader.load_metadata()
+
+    def render_header(self):
+        """Render dashboard header"""
+        st.markdown('<h1 class="main-header">🎵 Chord Analysis Dashboard 🎵</h1>', unsafe_allow_html=True)
+
+    def render_sidebar(self) -> Dict:
+        """Render sidebar with parameters"""
+        with st.sidebar:
+            st.header("⚙️ Analysis Parameters")
+
+            if st.session_state.metadata is None:
+                st.error("Failed to load metadata")
+                return {}
+
+            metadata = st.session_state.metadata
+
+            # Year range slider
+            st.subheader("📅 Time Range")
+            year_range = st.slider(
+                "Select Year Range",
+                min_value=metadata.min_year,
+                max_value=metadata.max_year,
+                value=(metadata.min_year, metadata.max_year),
+                format="%d"
+            )
+
+            # Genre selection
+            st.subheader("🎸 Genres")
+
+            # Select all button
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Select All"):
+                    st.session_state.selected_genres = metadata.genres.copy()
+            with col2:
+                if st.button("Clear All"):
+                    st.session_state.selected_genres = []
+
+            # Initialize selected genres
+            if 'selected_genres' not in st.session_state:
+                st.session_state.selected_genres = []
+
+            # Genre checkboxes - 3 per row
+            for i in range(0, len(metadata.genres), 3):
+                cols = st.columns(3)
+                for j in range(3):
+                    if i + j < len(metadata.genres):
+                        genre = metadata.genres[i + j]
+                        with cols[j]:
+                            if st.checkbox(genre, value=genre in st.session_state.selected_genres, key=f"genre_{genre}"):
+                                if genre not in st.session_state.selected_genres:
+                                    st.session_state.selected_genres.append(genre)
+                            else:
+                                if genre in st.session_state.selected_genres:
+                                    st.session_state.selected_genres.remove(genre)
+
+            # Analyzer selection
+            st.divider()
+            st.subheader("🔍 Select Analyzers")
+            self._render_analyzer_selection()
+
+            return {
+                'start_year': year_range[0],
+                'end_year': year_range[1],
+                'genres': st.session_state.selected_genres
+            }
+
+    def _render_analyzer_selection(self):
+        """Render analyzer selection UI"""
+        if not self.analyzer_manager.analyzers:
+            st.warning("No analyzers found")
+            return
+
+        for analyzer_id, analyzer_info in self.analyzer_manager.analyzers.items():
+            with st.container():
+                st.markdown('<div class="analyzer-card">', unsafe_allow_html=True)
+                if st.checkbox(analyzer_info['name'], key=f"analyzer_{analyzer_id}"):
+                    if analyzer_id not in st.session_state.selected_analyzers:
+                        st.session_state.selected_analyzers.append(analyzer_id)
+                else:
+                    if analyzer_id in st.session_state.selected_analyzers:
+                        st.session_state.selected_analyzers.remove(analyzer_id)
+                st.caption(analyzer_info['description'])
+                st.markdown('</div>', unsafe_allow_html=True)
+
+    def render_main_content(self, params: Dict):
+        """Render main content area"""
+        if not params:
+            return
+
+        # Analysis button
+        if st.session_state.selected_analyzers and params['genres']:
+            if st.button("🚀 Run Analysis", type="primary"):
+                self._run_analysis(params)
+        elif not params['genres']:
+            st.warning("Please select at least one genre")
+        elif not st.session_state.selected_analyzers:
+            st.info("Please select at least one analyzer")
+
+        # Display tabs
+        self.tab_manager.render_tabs()
+
+    def _run_analysis(self, params: Dict):
+        """Run selected analyzers"""
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        results = {}
+        total_analyzers = len(st.session_state.selected_analyzers)
+
+        for i, analyzer_id in enumerate(st.session_state.selected_analyzers):
+            status_text.text(f"Running {analyzer_id}...")
+            progress_bar.progress((i + 1) / total_analyzers)
+
+            try:
+                # Run analyzer
+                fig, report = self.analyzer_manager.run_analyzer(
+                    analyzer_id,
+                    params['genres'],
+                    params['start_year'],
+                    params['end_year']
+                )
+                results[analyzer_id] = (fig, report)
+            except Exception as e:
+                st.error(f"Error in {analyzer_id}: {str(e)}")
+
+        progress_bar.progress(1.0)
+        status_text.text("Analysis complete!")
+
+        # Create new tab
+        tab_id = self.tab_manager.create_tab_id()
+        self.tab_manager.add_tab(tab_id, results, params)
+        st.success(f"✅ Analysis complete!")
+
+    def run(self):
+        """Main dashboard entry point"""
+        self.render_header()
+        params = self.render_sidebar()
+        self.render_main_content(params)
+
+
+# Run the dashboard
+if __name__ == "__main__":
+    dashboard = DashboardUI()
+    dashboard.run()

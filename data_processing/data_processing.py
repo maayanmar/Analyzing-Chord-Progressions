@@ -20,7 +20,7 @@ def process_data(file_path: str = '../data/raw.csv') -> pd.DataFrame:
     # Read the raw data
     raw_data = pd.read_csv(file_path)
 
-    # rename main_genre to genre
+    # Rename main_genre to genre
     raw_data.rename(columns={'main_genre': 'genre'}, inplace=True)
 
     # Select relevant columns
@@ -28,6 +28,15 @@ def process_data(file_path: str = '../data/raw.csv') -> pd.DataFrame:
 
     # Drop rows with missing values in essential columns
     processed_data.dropna(subset=['id', 'genre', 'release_date', 'chords'], inplace=True)
+
+    # Convert release_date to datetime and extract the year
+    processed_data['release_date'] = pd.to_datetime(processed_data['release_date'], errors='coerce').dt.year
+
+    # Drop rows where year could not be extracted
+    processed_data.dropna(subset=['release_date'], inplace=True)
+
+    # Rename release_date column to year
+    processed_data.rename(columns={'release_date': 'year'}, inplace=True)
 
     return processed_data.reset_index(drop=True)
 
