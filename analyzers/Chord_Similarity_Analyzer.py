@@ -77,12 +77,19 @@ class ChordSimilarityAnalyzer(BaseAnalyzer):
         if self.similarity_matrix.empty:
             return px.imshow([[0]], title="No data", labels={"x": "Chord", "y": "Chord"})
 
+        # שומר על אותו סדר בציר X ובציר Y ומחיל origin='lower'
+        order = self.similarity_matrix.index.tolist()
         fig = px.imshow(
-            self.similarity_matrix,
+            self.similarity_matrix.loc[order, order],
             title="Chord Similarity Matrix",
             labels={"x": "Chord", "y": "Chord", "color": "Similarity"},
+            origin="lower"  # זה החלק החשוב
         )
-        fig.update_layout(margin=dict(l=20, r=20, t=40, b=20))
+        fig.update_layout(
+            xaxis=dict(categoryorder="array", categoryarray=order),
+            yaxis=dict(categoryorder="array", categoryarray=order),
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
         return fig
 
     def get_report(self):
