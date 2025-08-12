@@ -2,3 +2,5 @@ streamlit==1.47.1
 plotly==5.24.1
 pandas==2.3.1
 numpy==2.3.2
+scikit-learn>=1.0.0
+music21>=6.1.0

@@ -1,18 +1,17 @@
 import pandas as pd
+import plotly.express as px
 from analyzers.base_analyzer import BaseAnalyzer
 import re
-import plotly.express as px
 
-class ChordStatistics(BaseAnalyzer):
+class GenreYearHeatmap(BaseAnalyzer):
     """
-    Analyzes average unique chords per song across genres.
+    Heatmap of average unique chords per song by genre and year.
     """
 
     def __init__(self):
         self.results = None
 
     def parse_chords(self, chord_str):
-        """Helper function to extract actual chords from a string with markers like <chorus_1>."""
         if not isinstance(chord_str, str):
             return set()
         tokens = chord_str.strip().split()
@@ -28,7 +27,7 @@ class ChordStatistics(BaseAnalyzer):
 
         df['unique_chords'] = df['chords'].apply(lambda x: len(self.parse_chords(x)))
 
-        grouped = df.groupby('genre')['unique_chords'].mean().reset_index()
+        grouped = df.groupby(['genre', 'year'])['unique_chords'].mean().reset_index()
         grouped.rename(columns={'unique_chords': 'avg_unique_chords'}, inplace=True)
 
         self.results = grouped
@@ -36,22 +35,21 @@ class ChordStatistics(BaseAnalyzer):
 
     def create_visualization(self):
         if self.results is None or self.results.empty:
-            return px.bar(title="No Data Available")
+            return px.imshow([[0]], title="No Data Available")
 
-        fig = px.bar(
-            self.results,
-            x='genre',
-            y='avg_unique_chords',
-            title='Average Unique Chords per Song by Genre',
-            labels={'avg_unique_chords': 'Average Unique Chords', 'genre': 'Genre'},
-            color='avg_unique_chords',
-            color_continuous_scale='Plasma'
+        pivot_df = self.results.pivot(index="genre", columns="year", values="avg_unique_chords")
+
+        fig = px.imshow(
+            pivot_df,
+            labels=dict(x="Year", y="Genre", color="Avg Unique Chords"),
+            aspect="auto",
+            color_continuous_scale="Blues",
+            title="Heatmap: Average Unique Chords by Genre and Year"
         )
         return fig
 
     def get_report(self) -> dict:
         return {
-            "summary": "Shows average number of unique chords per song across genres.",
+            "summary": "Displays a heatmap of the average number of unique chords per song, per genre and year.",
             "result_table": self.results.to_dict(orient='records') if self.results is not None else []
         }
-
