@@ -44,12 +44,12 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
-    .analyzer-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #4ECDC4;
+    .analyzer-item {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .analyzer-item:last-child {
+        border-bottom: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -203,17 +203,51 @@ class TabManager:
                 tab_data = st.session_state.analysis_tabs[tab_id]
                 self._render_tab_content(tab_data)
 
+    def _format_value(self, value):
+        """Format values for display, limiting floats to 3 decimal places"""
+        if isinstance(value, float):
+            return round(value, 3)
+        elif isinstance(value, dict):
+            return {k: self._format_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [self._format_value(v) for v in value]
+        else:
+            return value
+
     def _render_tab_content(self, tab_data: Dict):
         """Render content of a single tab"""
         # Show metadata
         metadata = tab_data['metadata']
-        col1, col2, col3 = st.columns(3)
+
+        # Load data to get statistics
+        data = pd.read_csv("data/processed.csv")
+        filtered_data = data[data['year'].between(metadata['start_year'], metadata['end_year'])]
+        if metadata['genres']:
+            filtered_data = filtered_data[filtered_data['genre'].isin(metadata['genres'])]
+
+        # Calculate statistics
+        genre_counts = filtered_data['genre'].value_counts().to_dict()
+        total_songs = len(filtered_data)
+
+        # Display overall statistics
+        col1, col2 = st.columns([1, 3])
         with col1:
             st.metric("Year Range", f"{metadata['start_year']} - {metadata['end_year']}")
+            st.metric("Total Songs", f"{total_songs:,}")
+
         with col2:
-            st.metric("Genres", len(metadata['genres']))
-        with col3:
-            st.metric("Time", tab_data['timestamp'].strftime("%H:%M:%S"))
+            # Display genre statistics in a compact way
+            st.markdown("**Songs per Genre:**")
+            # Create a compact grid display for genres
+            genre_items = list(genre_counts.items())
+            num_cols = 4  # Number of columns for genre display
+            for i in range(0, len(genre_items), num_cols):
+                cols = st.columns(num_cols)
+                for j in range(num_cols):
+                    if i + j < len(genre_items):
+                        genre, count = genre_items[i + j]
+                        with cols[j]:
+                            st.caption(f"{genre}: {count:,}")
 
         # Show results for each analyzer
         for analyzer_name, (fig, report) in tab_data['results'].items():
@@ -225,11 +259,12 @@ class TabManager:
                 unique_key = f"chart_{tab_data['timestamp'].strftime('%H%M%S')}_{analyzer_name}"
                 st.plotly_chart(fig, use_container_width=True, key=unique_key)
 
-            # Display report
+            # Display report with formatted values
             if report:
                 with st.expander("View Report"):
                     for key, value in report.items():
-                        st.write(f"**{key}:** {value}")
+                        formatted_value = self._format_value(value)
+                        st.write(f"**{key}:** {formatted_value}")
 
 
 class DashboardUI:
@@ -326,15 +361,24 @@ class DashboardUI:
             st.warning("No analyzers found")
             return
 
-        for analyzer_id, analyzer_info in self.analyzer_manager.analyzers.items():
+        analyzer_items = list(self.analyzer_manager.analyzers.items())
+        for idx, (analyzer_id, analyzer_info) in enumerate(analyzer_items):
+            # Create a container with custom styling
             with st.container():
-                st.markdown('<div class="analyzer-card">', unsafe_allow_html=True)
+                # Apply the analyzer-item class for styling
+                if idx < len(analyzer_items) - 1:
+                    # Add visual separator except for the last item
+                    st.markdown('<div class="analyzer-item">', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="analyzer-item" style="border-bottom: none;">', unsafe_allow_html=True)
+
                 if st.checkbox(analyzer_info['name'], key=f"analyzer_{analyzer_id}"):
                     if analyzer_id not in st.session_state.selected_analyzers:
                         st.session_state.selected_analyzers.append(analyzer_id)
                 else:
                     if analyzer_id in st.session_state.selected_analyzers:
                         st.session_state.selected_analyzers.remove(analyzer_id)
+
                 st.caption(analyzer_info['description'])
                 st.markdown('</div>', unsafe_allow_html=True)
 
