@@ -227,9 +227,7 @@ class TabManager:
 
             # Display report
             if report:
-                # Create unique key for expander too
-                expander_key = f"expander_{tab_data['timestamp'].strftime('%H%M%S')}_{analyzer_name}"
-                with st.expander("View Report", key=expander_key):
+                with st.expander("View Report"):
                     for key, value in report.items():
                         st.write(f"**{key}:** {value}")
 
