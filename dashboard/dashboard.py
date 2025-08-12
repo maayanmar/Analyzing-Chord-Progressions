@@ -219,13 +219,17 @@ class TabManager:
         for analyzer_name, (fig, report) in tab_data['results'].items():
             st.subheader(analyzer_name.replace('_', ' ').title())
 
-            # Display visualization
+            # Display visualization with unique key
             if fig:
-                st.plotly_chart(fig, use_container_width=True)
+                # Create unique key using tab timestamp and analyzer name
+                unique_key = f"chart_{tab_data['timestamp'].strftime('%H%M%S')}_{analyzer_name}"
+                st.plotly_chart(fig, use_container_width=True, key=unique_key)
 
             # Display report
             if report:
-                with st.expander("View Report"):
+                # Create unique key for expander too
+                expander_key = f"expander_{tab_data['timestamp'].strftime('%H%M%S')}_{analyzer_name}"
+                with st.expander("View Report", key=expander_key):
                     for key, value in report.items():
                         st.write(f"**{key}:** {value}")
 
