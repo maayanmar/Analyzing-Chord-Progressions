@@ -52,7 +52,8 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
         if self.transition_matrix.empty:
             return px.imshow([[0]], text_auto=True)
 
-        top_chords = self.transition_matrix.sum(axis=1).sort_values(ascending=False).head(20).index
+        # אותו סדר בצירים + origin='lower'
+        top_chords = self.transition_matrix.sum(axis=1).sort_values(ascending=False).head(20).index.tolist()
         trimmed = self.transition_matrix.loc[top_chords, top_chords]
 
         fig = px.imshow(
@@ -60,9 +61,15 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
             text_auto=True,
             color_continuous_scale='Viridis',
             labels=dict(x="To", y="From", color="Count"),
-            title="Chord Transition Heatmap"
+            title="Chord Transition Heatmap",
+            origin="lower"
         )
-        fig.update_layout(height=700)
+
+        fig.update_layout(
+            height=700,
+            xaxis=dict(categoryorder="array", categoryarray=top_chords),
+            yaxis=dict(categoryorder="array", categoryarray=top_chords)
+        )
         return fig
 
     def get_report(self) -> dict:
