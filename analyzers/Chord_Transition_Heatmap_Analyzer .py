@@ -136,14 +136,34 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
         return fig
 
     def get_report(self) -> dict:
-        return {
-            "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
-            "result_table": (
-                self.transition_matrix.reset_index()
-                .melt(id_vars=self.transition_matrix.index.name or 'From', var_name='To', value_name='Percentage')
-                .query("Percentage > 0")
-                .sort_values("Percentage", ascending=False)
-                .to_dict(orient='records')
-                if not self.transition_matrix.empty else []
-            )
+    """
+    Return a short summary + a flat table of transitions the UI can render.
+    The table contains rows of (From, To, Percentage), sorted desc,
+    and excludes zero-valued cells.
+    """
+    if self.transition_matrix.empty:
+        return {"summary": "No data available.", "result_table": []}
+
+    # Ensure clear axis names for melt
+    mat = self.transition_matrix.copy()
+    mat.index.name = "From"
+    mat.columns.name = "To"
+
+    # Long format: From | To | Percentage
+    long_df = (
+        mat.stack()
+        .reset_index(name="Percentage")
+        .query("Percentage > 0")
+        .sort_values("Percentage", ascending=False)
+    )
+
+    summary = (
+        "Full chord-to-chord transition matrix (global % of all transitions). "
+        f"Rows: {mat.shape[0]}, Nonzero cells: {(mat.values > 0).sum()}."
+    )
+
+    return {
+        "summary": summary,
+        "result_table": long_df.to_dict(orient="records"),
     }
+
