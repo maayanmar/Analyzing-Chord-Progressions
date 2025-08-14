@@ -136,14 +136,14 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
         return fig
 
     def get_report(self) -> dict:
-    return {
-        "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
-        "result_table": (
-            self.transition_matrix.reset_index()
-            .melt(id_vars=self.transition_matrix.index.name or 'From', var_name='To', value_name='Percentage')
-            .query("Percentage > 0")
-            .sort_values("Percentage", ascending=False)
-            .to_dict(orient='records')
-            if not self.transition_matrix.empty else []
-        )
+        return {
+            "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
+            "result_table": (
+                self.transition_matrix.reset_index()
+                .melt(id_vars=self.transition_matrix.index.name or 'From', var_name='To', value_name='Percentage')
+                .query("Percentage > 0")
+                .sort_values("Percentage", ascending=False)
+                .to_dict(orient='records')
+                if not self.transition_matrix.empty else []
+            )
     }
