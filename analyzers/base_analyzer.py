@@ -10,8 +10,16 @@ import plotly.graph_objects as go
 class BaseAnalyzer(ABC):
     """
     Base class for all chord-analysis modules.
-    Subclasses must implement: analyze, create_visualization, get_report.
+    Subclasses must implement: analyze, create_visualization, get_report,
+    and parse_chords_sequence.
     """
+
+    @abstractmethod
+    def parse_chords_sequence(self, chord_str: str) -> List[str]:
+        """
+        Parse a chord sequence string into a list of chord tokens.
+        """
+        pass
 
     # ---- Abstract API ----
     @abstractmethod
