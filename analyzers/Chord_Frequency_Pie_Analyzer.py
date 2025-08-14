@@ -10,7 +10,7 @@ from analyzers.base_analyzer import BaseAnalyzer
 
 class ChordFrequencyPieAnalyzer(BaseAnalyzer):
     """
-    Analyzer that computes chord frequency statistics and renders a pie chart
+    Computes chord frequency statistics and renders a pie chart
     of the most frequent chords in the filtered dataset.
     """
 
