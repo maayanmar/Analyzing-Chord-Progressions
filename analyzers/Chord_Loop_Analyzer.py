@@ -137,18 +137,31 @@ class ChordLoopDetector(BaseAnalyzer):
         return fig
 
     def get_report(self) -> Dict[str, Any]:
-        """
-        Return a full, serializable summary of detected loops for export/logging.
+    """
+    Return a full, serializable summary of detected loops for export/logging.
 
-        Returns:
-            Dict[str, Any]:
-                - summary: textual description.
-                - all_loops: mapping of every loop (as a string) to its count.
-        """
-        all_loops_dict: Dict[str, int] = {
-            " → ".join(loop): count for loop, count in self.loop_counter.items()
-        }
+    Returns:
+        Dict[str, Any]:
+            - summary: textual description.
+            - all_loops: mapping of every loop (as a string) to its count,
+              filtered to loops whose frequency is at least MIN_SHARE of total.
+    """
+    MIN_SHARE = 0.01  # 1% threshold of total loop occurrences
+
+    total = int(sum(self.loop_counter.values()))
+    if total == 0:
         return {
-            "summary": "Full frequency table of repeating chord loops across selected songs.",
-            "all_loops": dict(sorted(all_loops_dict.items(), key=lambda kv: kv[1], reverse=True)),
+            "summary": "No repeating chord loops were detected.",
+            "all_loops": {}
         }
+
+    all_loops_dict: Dict[str, int] = {
+        " → ".join(loop): count
+        for loop, count in self.loop_counter.items()
+        if (count / total) >= MIN_SHARE
+    }
+
+    return {
+        "summary": f"Full frequency table of repeating chord loops (>= {int(MIN_SHARE*100)}% of total occurrences).",
+        "all_loops": dict(sorted(all_loops_dict.items(), key=lambda kv: kv[1], reverse=True)),
+    }
