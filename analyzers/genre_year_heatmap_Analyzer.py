@@ -10,7 +10,7 @@ from analyzers.base_analyzer import BaseAnalyzer
 
 class GenreYearHeatmap(BaseAnalyzer):
     """
-    Heatmap of average unique chords per song by genre and year.
+    Creates a heatmap of average unique chords per song by genre and year.
     """
 
     def __init__(self) -> None:
