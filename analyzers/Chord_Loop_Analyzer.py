@@ -136,19 +136,19 @@ class ChordLoopDetector(BaseAnalyzer):
         fig.update_layout(margin=dict(l=20, r=20, t=40, b=20))
         return fig
 
-   def get_report(self) -> Dict[str, Any]:
-    """
-    Return a serializable summary of the top 100 detected loops for export/logging.
-
-    Returns:
-        Dict[str, Any]:
-            - summary: textual description.
-            - top_100_loops: mapping of the top 100 loops (as strings) to their counts.
-    """
-    top_items = self.loop_counter.most_common(100)
-    top_100_loops: Dict[str, int] = {" → ".join(loop): count for loop, count in top_items}
-
-    return {
-        "summary": "Top 100 repeating chord loops across selected songs.",
-        "top_100_loops": top_100_loops,
-    }
+       def get_report(self) -> Dict[str, Any]:
+        """
+        Return a serializable summary of the top 100 detected loops for export/logging.
+    
+        Returns:
+            Dict[str, Any]:
+                - summary: textual description.
+                - top_100_loops: mapping of the top 100 loops (as strings) to their counts.
+        """
+        top_items = self.loop_counter.most_common(100)
+        top_100_loops: Dict[str, int] = {" → ".join(loop): count for loop, count in top_items}
+    
+        return {
+            "summary": "Top 100 repeating chord loops across selected songs.",
+            "top_100_loops": top_100_loops,
+        }
