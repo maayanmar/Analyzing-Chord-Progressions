@@ -136,32 +136,19 @@ class ChordLoopDetector(BaseAnalyzer):
         fig.update_layout(margin=dict(l=20, r=20, t=40, b=20))
         return fig
 
-    def get_report(self) -> Dict[str, Any]:
-        """
-        Return a full, serializable summary of detected loops for export/logging.
-    
-        Returns:
-            Dict[str, Any]:
-                - summary: textual description.
-                - all_loops: mapping of every loop (as a string) to its count,
-                  filtered to loops whose frequency is at least MIN_SHARE of total.
-        """
-        MIN_SHARE = 0.01  # 1% threshold of total loop occurrences
-    
-        total = int(sum(self.loop_counter.values()))
-        if total == 0:
-            return {
-                "summary": "No repeating chord loops were detected.",
-                "all_loops": {}
-            }
-    
-        all_loops_dict: Dict[str, int] = {
-            " → ".join(loop): count
-            for loop, count in self.loop_counter.items()
-            if (count / total) >= MIN_SHARE
-        }
-    
-        return {
-            "summary": f"Full frequency table of repeating chord loops (>= {int(MIN_SHARE*100)}% of total occurrences).",
-            "all_loops": dict(sorted(all_loops_dict.items(), key=lambda kv: kv[1], reverse=True)),
-        }
+   def get_report(self) -> Dict[str, Any]:
+    """
+    Return a serializable summary of the top 100 detected loops for export/logging.
+
+    Returns:
+        Dict[str, Any]:
+            - summary: textual description.
+            - top_100_loops: mapping of the top 100 loops (as strings) to their counts.
+    """
+    top_items = self.loop_counter.most_common(100)
+    top_100_loops: Dict[str, int] = {" → ".join(loop): count for loop, count in top_items}
+
+    return {
+        "summary": "Top 100 repeating chord loops across selected songs.",
+        "top_100_loops": top_100_loops,
+    }
