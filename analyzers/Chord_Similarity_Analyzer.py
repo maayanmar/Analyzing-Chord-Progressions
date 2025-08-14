@@ -12,8 +12,6 @@ from analyzers.base_analyzer import BaseAnalyzer
 class ChordSimilarityAnalyzer(BaseAnalyzer):
     """
     Analyzes similarity between chords based on their pitch content.
-    Builds a chord-by-chord similarity matrix using Jaccard similarity
-    over pitch classes (0–11).
     """
 
     def __init__(self) -> None:
