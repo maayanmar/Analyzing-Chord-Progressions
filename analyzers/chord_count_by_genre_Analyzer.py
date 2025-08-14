@@ -79,7 +79,7 @@ class ChordCountByGenre(BaseAnalyzer):
         self.results = grouped
 
         result_table = grouped.to_dict(orient="records")
-        summary = "Shows average number of unique chords per song for each genre."
+        summary = "Average number of unique chords per song for each genre."
 
         return {
             "summary": summary,
