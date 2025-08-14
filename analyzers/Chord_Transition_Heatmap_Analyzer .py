@@ -1,86 +1,165 @@
-import pandas as pd
+from __future__ import annotations
+
+from typing import Any, Dict, List
 import re
+
+import pandas as pd
 import plotly.express as px
 from analyzers.base_analyzer import BaseAnalyzer
 
+
 class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
     """
-    Analyzes chord transitions and visualizes them as a heatmap (in percentages).
+    Analyzes chord transitions and visualizes them as a heatmap
+    expressed as global percentages out of all detected transitions.
+    Each cell (a -> b) holds (count(a->b) / sum_all_counts) * 100.
     """
 
-    def __init__(self):
-        self.transition_matrix = pd.DataFrame()
+    def __init__(self) -> None:
+        """
+        Initialize the analyzer and internal transition matrix cache.
+        """
+        self.transition_matrix: pd.DataFrame = pd.DataFrame()
 
-    def parse_chords_sequence(self, chord_str):
+    def parse_chords_sequence(self, chord_str: str) -> List[str]:
+        """
+        Parse a chord sequence string into a list of chord tokens.
+
+        Args:
+            chord_str: Raw chord sequence.
+
+        Returns:
+            List[str]: Parsed chord tokens.
+        """
         if not isinstance(chord_str, str):
             return []
         tokens = chord_str.strip().split()
-        return [token for token in tokens if not re.match(r'^<.*>$', token)]
+        return [t for t in tokens if not re.match(r"^<.*>$", t)]
 
-    def analyze(self, data: pd.DataFrame, genres: list, start_year: int, end_year: int) -> dict:
+    def analyze(
+        self,
+        data: pd.DataFrame,
+        genres: List[str],
+        start_year: int,
+        end_year: int
+    ) -> Dict[str, Any]:
+        """
+        Run the analysis over the dataset and cache a globally-normalized transition matrix.
+
+        Args:
+            data: Input dataframe with at least 'year', 'genre', 'chords' columns.
+            genres: Optional list of genres to include. If empty, no genre filter.
+            start_year: Inclusive start year for filtering.
+            end_year: Inclusive end year for filtering.
+
+        Returns:
+            Dict[str, Any]: Summary payload including:
+                - total_chords: number of distinct chords (matrix dimension).
+                - nonzero_transitions: count of non-zero A->B cells.
+                - from_share_all: mapping {FromChord: % of total transitions starting from it},
+                  sorted descending.
+        """
         df = data.copy()
-        df = df[df['year'].between(start_year, end_year)]
+        df = df[df["year"].between(start_year, end_year)]
         if genres:
-            df = df[df['genre'].isin(genres)]
+            df = df[df["genre"].isin(genres)]
 
-        transitions = {}
-
-        for chord_str in df['chords']:
-            chords = self.parse_chords_sequence(chord_str)
-            for i in range(len(chords) - 1):
-                a, b = chords[i], chords[i + 1]
+        # Count raw transitions A->B
+        transitions: Dict[str, Dict[str, int]] = {}
+        for chord_str in df["chords"]:
+            seq = self.parse_chords_sequence(chord_str)
+            for i in range(len(seq) - 1):
+                a, b = seq[i], seq[i + 1]
                 if a not in transitions:
                     transitions[a] = {}
                 transitions[a][b] = transitions[a].get(b, 0) + 1
 
-        all_chords = sorted(set(a for a in transitions) | set(b for v in transitions.values() for b in v))
-        matrix = pd.DataFrame(0, index=all_chords, columns=all_chords)
+        # Build full matrix over union of sources & targets
+        all_chords = sorted(set(transitions) | set(t for row in transitions.values() for t in row))
+        matrix = pd.DataFrame(0.0, index=all_chords, columns=all_chords, dtype=float)
 
-        for a in transitions:
-            for b in transitions[a]:
-                matrix.loc[a, b] = transitions[a][b]
+        for a, row in transitions.items():
+            for b, cnt in row.items():
+                matrix.at[a, b] = float(cnt)
 
-        # המרה לאחוזים מתוך כלל המעברים
-        total_transitions = matrix.values.sum()
-        if total_transitions > 0:
-            matrix = (matrix / total_transitions) * 100
+        # Global normalization to percentages: (cell / total) * 100
+        total_transitions = float(matrix.values.sum())
+        if total_transitions > 0.0:
+            matrix = (matrix / total_transitions) * 100.0
 
         self.transition_matrix = matrix
 
         return {
-            "total_chords": len(matrix),
-            "nonzero_transitions": int((matrix > 0).sum().sum()),
-            "most_common_from": matrix.sum(axis=1).sort_values(ascending=False).head(5).to_dict(),
+            "total_chords": int(len(self.transition_matrix)),
+            "nonzero_transitions": int((self.transition_matrix > 0).sum().sum()),
+            "from_share_all": (
+                self.transition_matrix.sum(axis=1)
+                .sort_values(ascending=False)
+                .to_dict()
+            ),
         }
 
     def create_visualization(self):
+        """
+        Build and return a heatmap of the top-20 chords (by outgoing share)
+        in % of total transitions.
+
+        Returns:
+            plotly.graph_objects.Figure: A heatmap. If no data is available,
+            returns a placeholder figure.
+        """
         if self.transition_matrix.empty:
             return px.imshow([[0]], text_auto=True)
 
-        top_chords = self.transition_matrix.sum(axis=1).sort_values(ascending=False).head(20).index.tolist()
+        top_chords = (
+            self.transition_matrix.sum(axis=1)
+            .sort_values(ascending=False)
+            .head(20)
+            .index
+            .tolist()
+        )
         trimmed = self.transition_matrix.loc[top_chords, top_chords]
 
         fig = px.imshow(
             trimmed,
-            text_auto=".1f",  # מציג אחוזים עם ספרה אחת אחרי הנקודה
-            color_continuous_scale='Viridis',
+            text_auto=".1f",  # show percentages with one decimal
+            color_continuous_scale="Viridis",
             labels=dict(x="To", y="From", color="Percentage"),
-            title="Chord Transition Heatmap (in %)",
+            title="Chord Transition Heatmap (global %, out of all transitions)",
             origin="lower"
         )
-
         fig.update_layout(
             height=700,
             xaxis=dict(categoryorder="array", categoryarray=top_chords),
-            yaxis=dict(categoryorder="array", categoryarray=top_chords)
+            yaxis=dict(categoryorder="array", categoryarray=top_chords),
         )
         return fig
 
-    def get_report(self) -> dict:
+    def get_report(self) -> Dict[str, Any]:
+        """
+        Return a full, serializable summary of the transition matrix.
+
+        Returns:
+            Dict[str, Any]:
+                - summary: textual description.
+                - matrix: full transition matrix as nested dict {From: {To: percent}}.
+                - from_share_all: {FromChord: % of total transitions}, sorted desc.
+                - to_share_all: {ToChord: % of total transitions}, sorted desc.
+        """
         if self.transition_matrix.empty:
             return {"summary": "No data available."}
-        top_chords = self.transition_matrix.sum(axis=1).sort_values(ascending=False).head(10)
+
         return {
-            "summary": "Heatmap of the most common chord-to-chord transitions (in % of total).",
-            "top_transitions": top_chords.to_dict()
+            "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
+            "matrix": self.transition_matrix.to_dict(),
+            "from_share_all": (
+                self.transition_matrix.sum(axis=1)
+                .sort_values(ascending=False)
+                .to_dict()
+            ),
+            "to_share_all": (
+                self.transition_matrix.sum(axis=0)
+                .sort_values(ascending=False)
+                .to_dict()
+            ),
         }
