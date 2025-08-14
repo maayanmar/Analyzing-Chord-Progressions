@@ -135,31 +135,15 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
         )
         return fig
 
-    def get_report(self) -> Dict[str, Any]:
-        """
-        Return a full, serializable summary of the transition matrix.
-
-        Returns:
-            Dict[str, Any]:
-                - summary: textual description.
-                - matrix: full transition matrix as nested dict {From: {To: percent}}.
-                - from_share_all: {FromChord: % of total transitions}, sorted desc.
-                - to_share_all: {ToChord: % of total transitions}, sorted desc.
-        """
-        if self.transition_matrix.empty:
-            return {"summary": "No data available."}
-
-        return {
-            "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
-            "matrix": self.transition_matrix.to_dict(),
-            "from_share_all": (
-                self.transition_matrix.sum(axis=1)
-                .sort_values(ascending=False)
-                .to_dict()
-            ),
-            "to_share_all": (
-                self.transition_matrix.sum(axis=0)
-                .sort_values(ascending=False)
-                .to_dict()
-            ),
-        }
+    def get_report(self) -> dict:
+    return {
+        "summary": "Full chord-to-chord transition matrix (global % of total transitions).",
+        "result_table": (
+            self.transition_matrix.reset_index()
+            .melt(id_vars=self.transition_matrix.index.name or 'From', var_name='To', value_name='Percentage')
+            .query("Percentage > 0")
+            .sort_values("Percentage", ascending=False)
+            .to_dict(orient='records')
+            if not self.transition_matrix.empty else []
+        )
+    }
