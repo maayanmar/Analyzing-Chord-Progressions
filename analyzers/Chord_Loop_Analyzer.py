@@ -11,8 +11,7 @@ from analyzers.base_analyzer import BaseAnalyzer
 
 class ChordLoopDetector(BaseAnalyzer):
     """
-    Analyzer that detects common repeating chord loops
-    that appear as two consecutive, identical segments in a chord sequence.
+    Analyzer that detects common repeating chord loops.
     """
 
     def __init__(self, min_loop_len: int = 3, max_loop_len: int = 6) -> None:
