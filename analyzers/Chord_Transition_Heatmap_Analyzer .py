@@ -12,7 +12,6 @@ class ChordTransitionHeatmapAnalyzer(BaseAnalyzer):
     """
     Analyzes chord transitions and visualizes them as a heatmap
     expressed as global percentages out of all detected transitions.
-    Each cell (a -> b) holds (count(a->b) / sum_all_counts) * 100.
     """
 
     def __init__(self) -> None:
