@@ -136,7 +136,7 @@ class ChordLoopDetector(BaseAnalyzer):
         fig.update_layout(margin=dict(l=20, r=20, t=40, b=20))
         return fig
 
-       def get_report(self) -> Dict[str, Any]:
+    def get_report(self) -> Dict[str, Any]:
         """
         Return a serializable summary of the top 100 detected loops for export/logging.
     
